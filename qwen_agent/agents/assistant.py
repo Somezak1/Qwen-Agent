@@ -76,6 +76,7 @@ class Assistant(FnCallAgent):
                  description: Optional[str] = None,
                  files: Optional[List[str]] = None,
                  rag_cfg: Optional[Dict] = None):
+        # llm: {'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'}
         super().__init__(function_list=function_list,
                          llm=llm,
                          system_message=system_message,
@@ -97,7 +98,17 @@ class Assistant(FnCallAgent):
 
         """
 
+        # messages: [
+        #     Message({ "role": "user", "content":  [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}] }),
+        # ]
+        # lang: 'zh'
+        # knowledge: ''
+        # kwargs: {}
         new_messages = self._prepend_knowledge_prompt(messages=messages, lang=lang, knowledge=knowledge, **kwargs)
+        # new_messages: [
+        #     Message({ "role": "system", "content": '# 知识库\n\n## 来自 [文件](1706.03762.pdf) 的内容：\n\n```...```' }),
+        #     Message({ "role": "user", "content":  [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}] }),
+        # ]
         return super()._run(messages=new_messages, lang=lang, **kwargs)
 
     def _prepend_knowledge_prompt(self,
@@ -105,15 +116,23 @@ class Assistant(FnCallAgent):
                                   lang: Literal['en', 'zh'] = 'en',
                                   knowledge: str = '',
                                   **kwargs) -> List[Message]:
+        # messages: [Message({'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]})]
+        # lang: 'zh'
+        # knowledge: ''
+        # kwargs: {}
         messages = copy.deepcopy(messages)
         if not knowledge:
             # Retrieval knowledge from files
+            # self.mem.run 返回一个生成器, *_ 用于接受前 n-1 个返回值, * 的用法与 *args 一样, last 接受最后一个返回值
             *_, last = self.mem.run(messages=messages, lang=lang, **kwargs)
+            # last: [Message(role=ASSISTANT, content=content, name='memory')]
             knowledge = last[-1][CONTENT]
+            # knowledge: str
 
         logger.debug(f'Retrieved knowledge of type `{type(knowledge).__name__}`:\n{knowledge}')
         if knowledge:
             knowledge = format_knowledge_to_source_and_content(knowledge)
+            # knowledge: [{"content": str, "source": '[文件](1706.03762.pdf)'}]
             logger.debug(f'Formatted knowledge into type `{type(knowledge).__name__}`:\n{knowledge}')
         else:
             knowledge = []

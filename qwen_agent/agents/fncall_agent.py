@@ -33,6 +33,14 @@ class FnCallAgent(Agent):
             description: The description of this agent, which will be used for multi_agent.
             files: A file url list. The initialized files for the agent.
         """
+        # function_list: None
+        # llm: {'api_key': 'EMPTY', 'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1'}
+        # system_message: 'You are a helpful assistant.'
+        # name: None
+        # description: None
+        # files: None
+        # kwargs: {'rag_cfg': None}
+
         super().__init__(function_list=function_list,
                          llm=llm,
                          system_message=system_message,
@@ -44,6 +52,12 @@ class FnCallAgent(Agent):
             self.mem = Memory(llm=self.llm, files=files, **kwargs)
 
     def _run(self, messages: List[Message], lang: Literal['en', 'zh'] = 'en', **kwargs) -> Iterator[List[Message]]:
+        # messages: [
+        #     Message({ "role": "system", "content": '# 知识库\n\n## 来自 [文件](1706.03762.pdf) 的内容：\n\n```...```' }),
+        #     Message({ "role": "user", "content":  [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}] }),
+        # ]
+        # lang: 'zh'
+        # kwargs: {}
         messages = copy.deepcopy(messages)
         num_llm_calls_available = MAX_LLM_CALL_PER_RUN
         response = []
@@ -55,9 +69,12 @@ class FnCallAgent(Agent):
                 extra_generate_cfg['seed'] = kwargs['seed']
             output_stream = self._call_llm(messages=messages,
                                            functions=[func.function for func in self.function_map.values()],
+                                           # functions: []
                                            extra_generate_cfg=extra_generate_cfg)
+                                           # extra_generate_cfg: {'lang': 'zh'}
             output: List[Message] = []
             for output in output_stream:
+                # output: 类似这种形式 [Message({'role': 'assistant', ...})]
                 if output:
                     yield response + output
             if output:
@@ -66,6 +83,7 @@ class FnCallAgent(Agent):
                 used_any_tool = False
                 for out in output:
                     use_tool, tool_name, tool_args, _ = self._detect_tool(out)
+                    # use_tool: False, tool_name: None, tool_args: None
                     if use_tool:
                         tool_result = self._call_tool(tool_name, tool_args, messages=messages, **kwargs)
                         fn_msg = Message(

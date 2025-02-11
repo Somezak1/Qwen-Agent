@@ -35,6 +35,8 @@ def get_chat_model(cfg: Union[dict, str] = 'qwen-plus') -> BaseChatModel:
     Returns:
         LLM object.
     """
+
+    # cfg: {'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'}
     if isinstance(cfg, str):
         cfg = {'model': cfg}
 

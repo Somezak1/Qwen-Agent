@@ -39,13 +39,25 @@ class Memory(Agent):
               }
               And the above is the default settings.
         """
+        # function_list: None
+        # llm: TextChatAtOAI Obj
+        # system_message: 'You are a helpful assistant.'
+        # files: None
+        # rag_cfg: None
+
         self.cfg = rag_cfg or {}
+        # self.cfg: {}
         self.max_ref_token: int = self.cfg.get('max_ref_token', DEFAULT_MAX_REF_TOKEN)
+        # self.max_ref_token: 4000
         self.parser_page_size: int = self.cfg.get('parser_page_size', DEFAULT_PARSER_PAGE_SIZE)
+        # self.parser_page_size: 500
         self.rag_searchers = self.cfg.get('rag_searchers', DEFAULT_RAG_SEARCHERS)
+        # self.rag_searchers: ['keyword_search', 'front_page_search']
         self.rag_keygen_strategy = self.cfg.get('rag_keygen_strategy', DEFAULT_RAG_KEYGEN_STRATEGY)
+        # self.rag_keygen_strategy: 'SplitQueryThenGenKeyword'
 
         function_list = function_list or []
+        # function_list: []
         super().__init__(function_list=[{
             'name': 'retrieval',
             'max_ref_token': self.max_ref_token,
@@ -60,6 +72,7 @@ class Memory(Agent):
                          system_message=system_message)
 
         self.system_files = files or []
+        # self.system_files: []
 
     def _run(self, messages: List[Message], lang: str = 'en', **kwargs) -> Iterator[List[Message]]:
         """This agent is responsible for processing the input files in the message.
@@ -76,7 +89,13 @@ class Memory(Agent):
             The message of retrieved documents.
         """
         # process files in messages
+
+        # messages: [Message({'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]})]
+        # lang: 'zh'
+        # kwargs: {}
+
         rag_files = self.get_rag_files(messages)
+        # rag_files: ['https://arxiv.org/pdf/1706.03762.pdf']
 
         if not rag_files:
             yield [Message(role=ASSISTANT, content='', name='memory')]
@@ -85,19 +104,25 @@ class Memory(Agent):
             # Only retrieval content according to the last user query if exists
             if messages and messages[-1].role == USER:
                 query = extract_text_from_message(messages[-1], add_upload_info=False)
+                # query: '介绍图二'
 
             # Keyword generation
             if query and self.rag_keygen_strategy.lower() != 'none':
                 module_name = 'qwen_agent.agents.keygen_strategies'
                 module = import_module(module_name)
+                # module: <module 'qwen_agent.agents.keygen_strategies' from '/data0/csw/Qwen-Agent/qwen_agent/agents/keygen_strategies/__init__.py'>
                 cls = getattr(module, self.rag_keygen_strategy)
+                # cls: qwen_agent.agents.keygen_strategies.split_query_then_gen_keyword.SplitQueryThenGenKeyword
                 keygen = cls(llm=self.llm)
+                # keygen: SplitQueryThenGenKeyword object
                 response = keygen.run([Message(USER, query)], files=rag_files)
                 last = None
                 for last in response:
                     continue
                 if last:
+                    # last: [Message({'role': 'assistant', 'content': '{"keywords_zh": ["图二", "图 2"], "keywords_en": ["Figure 2", "Diagram 2"], "text": "介绍图二"}'})]
                     keyword = last[-1].content.strip()
+                    # keyword: '{"keywords_zh": ["图二", "图 2"], "keywords_en": ["Figure 2", "Diagram 2"], "text": "介绍图二"}'
                 else:
                     keyword = ''
 
@@ -110,6 +135,7 @@ class Memory(Agent):
                     if 'text' not in keyword_dict:
                         keyword_dict['text'] = query
                     query = json.dumps(keyword_dict, ensure_ascii=False)
+                    # query: '{"keywords_zh": ["图二", "图 2"], "keywords_en": ["Figure 2", "Diagram 2"], "text": "介绍图二"}'
                     logger.info(query)
                 except Exception:
                     query = query
@@ -117,11 +143,15 @@ class Memory(Agent):
             content = self.function_map['retrieval'].call(
                 {
                     'query': query,
+                    # query: '{"keywords_zh": ["图二", "图 2"], "keywords_en": ["Figure 2", "Diagram 2"], "text": "介绍图二"}'
                     'files': rag_files
+                    # rag_files: ['https://arxiv.org/pdf/1706.03762.pdf']
                 },
                 **kwargs,
             )
+            # content: [{"url": 'https://arxiv.org/pdf/1706.03762.pdf', "text": [str_0, str_1, ..., str_8]}]
             if not isinstance(content, str):
+                # 将 content 里的内容按 json 格式拼接成一个超长的字符串
                 content = json.dumps(content, ensure_ascii=False, indent=4)
 
             yield [Message(role=ASSISTANT, content=content, name='memory')]

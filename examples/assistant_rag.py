@@ -3,15 +3,19 @@ from qwen_agent.gui import WebUI
 
 
 def test():
-    bot = Assistant(llm={'model': 'qwen2-72b-instruct'})
-    messages = [{'role': 'user', 'content': [{'text': '介绍图一'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]}]
-    for rsp in bot.run(messages):
-        print(rsp)
+    bot = Assistant(llm={'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'})
+    messages = [{'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]}]
+    for i, rsp in enumerate(bot.run(messages), start=1):
+        print(f"agent 第 {i} 次返回内容: ", rsp)
+
+    # Agent.run(...) ->
+    # Assistant._run(...) ->
+    # FnCallAgent._run(...) ->
 
 
 def app_gui():
     # Define the agent
-    bot = Assistant(llm={'model': 'qwen2-72b-instruct'},
+    bot = Assistant(llm={'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'},
                     name='Assistant',
                     description='使用RAG检索并回答，支持文件类型：PDF/Word/PPT/TXT/HTML。')
     chatbot_config = {
@@ -28,5 +32,5 @@ def app_gui():
 
 
 if __name__ == '__main__':
-    # test()
-    app_gui()
+    test()
+    # app_gui()

@@ -72,6 +72,17 @@ class Agent(ABC):
         Yields:
             The response generator.
         """
+
+        # Assistant
+        #     messages: [{'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]}]
+        #     kwargs: {}
+        # Memory
+        #     messages: [Message({'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]})]
+        #     kwargs: {'lang': 'zh'}
+        # SplitQueryThenGenKeyword
+        #     messages: [Message({'role': 'user', 'content': '介绍图二'})]
+        #     kwargs: {'files': ['https://arxiv.org/pdf/1706.03762.pdf']}
+
         messages = copy.deepcopy(messages)
         _return_message_type = 'dict'
         new_messages = []
@@ -90,6 +101,18 @@ class Agent(ABC):
                 kwargs['lang'] = 'zh'
             else:
                 kwargs['lang'] = 'en'
+        # Assistant
+        #     new_messages: [Message({'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]})]
+        #     kwargs: {'lang': 'zh'}
+        #     _return_message_type: 'dict'
+        # Memory
+        #     new_messages: [Message({'role': 'user', 'content': [{'text': '介绍图二'}, {'file': 'https://arxiv.org/pdf/1706.03762.pdf'}]})]
+        #     kwargs: {'lang': 'zh'}
+        #     _return_message_type: 'message'
+        # SplitQueryThenGenKeyword
+        #     new_messages: [Message({'role': 'user', 'content': '介绍图二'})]
+        #     kwargs: {'files': ['https://arxiv.org/pdf/1706.03762.pdf'], 'lang': 'zh'}
+        #     _return_message_type: 'message'
 
         for rsp in self._run(messages=new_messages, **kwargs):
             for i in range(len(rsp)):
@@ -139,6 +162,7 @@ class Agent(ABC):
         """
         messages = copy.deepcopy(messages)
         if self.system_message:
+            # self.system_message: 'You are a helpful assistant.'
             if messages[0][ROLE] != SYSTEM:
                 messages.insert(0, Message(role=SYSTEM, content=self.system_message))
             elif isinstance(messages[0][CONTENT], str):
@@ -146,6 +170,7 @@ class Agent(ABC):
             else:
                 assert isinstance(messages[0][CONTENT], list)
                 messages[0][CONTENT] = [ContentItem(text=self.system_message + '\n\n')] + messages[0][CONTENT]
+        # self.llm: TextChatAtOAI Obj
         return self.llm.chat(messages=messages,
                              functions=functions,
                              stream=stream,
@@ -187,6 +212,7 @@ class Agent(ABC):
             return json.dumps(tool_result, ensure_ascii=False, indent=4)
 
     def _init_tool(self, tool: Union[str, Dict, BaseTool]):
+        # tool: 类似 'code_interpreter' / {'name': 'code_interpreter', 'timeout': 10} / CodeInterpreter()
         if isinstance(tool, BaseTool):
             tool_name = tool.name
             if tool_name in self.function_map:

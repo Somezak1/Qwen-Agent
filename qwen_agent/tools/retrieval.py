@@ -27,6 +27,7 @@ def _check_deps_for_rag():
 @register_tool('retrieval')
 class Retrieval(BaseTool):
     description = f'从给定文件列表中检索出和问题相关的内容，支持文件类型包括：{"/".join(PARSER_SUPPORTED_FILE_TYPES)}'
+    # PARSER_SUPPORTED_FILE_TYPES: ['pdf', 'docx', 'pptx', 'txt', 'html', 'csv', 'tsv', 'xlsx', 'xls']
     parameters = [{
         'name': 'query',
         'type': 'string',
@@ -43,6 +44,12 @@ class Retrieval(BaseTool):
     }]
 
     def __init__(self, cfg: Optional[Dict] = None):
+        # cfg: {
+        #     'name': 'retrieval',
+        #     'max_ref_token': 4000,
+        #     'parser_page_size': 500,
+        #     'rag_searchers': ['keyword_search', 'front_page_search']
+        # }
         super().__init__(cfg)
         self.max_ref_token: int = self.cfg.get('max_ref_token', DEFAULT_MAX_REF_TOKEN)
         self.parser_page_size: int = self.cfg.get('parser_page_size', DEFAULT_PARSER_PAGE_SIZE)
@@ -66,17 +73,32 @@ class Retrieval(BaseTool):
         Returns:
             The parsed file list or retrieved file list.
         """
+        # params: {'files': ['https://arxiv.org/pdf/1706.03762.pdf'], 'query': '{"keywords_zh": ["图二", "图 2"], "keywords_en": ["Figure 2"], "text": "介绍图二"}'}
+        # kwargs: {}
 
         # TODO: It this a good place to check the RAG deps?
         _check_deps_for_rag()
 
         params = self._verify_json_format_args(params)
         files = params.get('files', [])
+        # files: ['https://arxiv.org/pdf/1706.03762.pdf']
         if isinstance(files, str):
             files = json5.loads(files)
         records = []
         for file in files:
+            # file: 'https://arxiv.org/pdf/1706.03762.pdf'
+            # kwargs: {}
             _record = self.doc_parse.call(params={'url': file}, **kwargs)
+            # _record: {
+            #     'url': 'https://arxiv.org/pdf/1706.03762.pdf',
+            #     'title': '1706.03762.pdf',
+            #     'raw': [
+            #         {'content': str, 'metadata': {'chunk_id': 0, 'source': 'https://arxiv.org/pdf/1706.03762.pdf', 'title': '1706.03762.pdf'}, 'token': 487}_0,
+            #         {'content': str, 'metadata': {'chunk_id': 1, 'source': 'https://arxiv.org/pdf/1706.03762.pdf', 'title': '1706.03762.pdf'}, 'token': 450}_1,
+            #         ...
+            #         {'content': str, 'metadata': {'chunk_id': 23, 'source': 'https://arxiv.org/pdf/1706.03762.pdf', 'title': '1706.03762.pdf'}, 'token': 335}_23,
+            #     ]
+            # }
             records.append(_record)
 
         query = params.get('query', '')
