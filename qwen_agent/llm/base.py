@@ -55,11 +55,16 @@ class BaseChatModel(ABC):
         return False
 
     def __init__(self, cfg: Optional[Dict] = None):
+        # cfg: {'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'}
         cfg = cfg or {}
         self.model = cfg.get('model', '').strip()
+        # self.model: 'qwen2.5-14b-instruct'
         generate_cfg = copy.deepcopy(cfg.get('generate_cfg', {}))
+        # generate_cfg: {}
         cache_dir = cfg.get('cache_dir', generate_cfg.pop('cache_dir', None))
+        # cache_dir: None
         self.max_retries = generate_cfg.pop('max_retries', 0)
+        # self.max_retries: 0
         self.generate_cfg = generate_cfg
 
         if cache_dir:
@@ -74,6 +79,10 @@ class BaseChatModel(ABC):
             self.cache = diskcache.Cache(directory=cache_dir)
         else:
             self.cache = None
+
+        # __init__ 总结:
+        #     初始化一堆变量, 其中最重要的是 generate_cfg, 里面存储了 LLM 生成所需的一些配置
+        #     如果在 TextChatAtOAI 类定义时传入 generate_cfg, 那么 self.generate_cfg = generate_cfg; 否则 self.generate_cfg = {}
 
     def quick_chat(self, prompt: str) -> str:
         *_, responses = self.chat(messages=[Message(role=USER, content=prompt)])
@@ -104,6 +113,9 @@ class BaseChatModel(ABC):
         Returns:
             the generated message list response by llm.
         """
+        # stream: True
+        # delta_stream: False
+        # extra_generate_cfg: None
 
         # Unify the input messages to type List[Message]:
         messages = copy.deepcopy(messages)
@@ -116,8 +128,12 @@ class BaseChatModel(ABC):
                 new_messages.append(msg)
                 _return_message_type = 'message'
         messages = new_messages
+        # messages: [
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
 
         # Cache lookup:
+        # self.cache: None
         if self.cache is not None:
             cache_key = dict(messages=messages, functions=functions, extra_generate_cfg=extra_generate_cfg)
             cache_key: str = json_dumps_compact(cache_key, sort_keys=True)
@@ -137,19 +153,29 @@ class BaseChatModel(ABC):
                 'Using `delta_stream=True` makes it difficult to implement advanced postprocessing and retry mechanisms.'
             )
 
+        # self.generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿']}, self.generate_cfg 的值受 TextChatAtOAI 类定义时传入的参数影响
+        # extra_generate_cfg: None, extra_generate_cfg 是调用 .chat() 方法时传入的参数
         generate_cfg = merge_generate_cfgs(base_generate_cfg=self.generate_cfg, new_generate_cfg=extra_generate_cfg)
+        # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿']}
         if 'seed' not in generate_cfg:
             generate_cfg['seed'] = random.randint(a=0, b=2**30)
+            # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿'], 'seed': 43326842}
         if 'lang' in generate_cfg:
             lang: Literal['en', 'zh'] = generate_cfg.pop('lang')
         else:
             lang: Literal['en', 'zh'] = 'zh' if has_chinese_messages(messages) else 'en'
+            # lang: 'en'
 
         if messages[0].role != SYSTEM:
             messages = [Message(role=SYSTEM, content=DEFAULT_SYSTEM_MESSAGE)] + messages
+            # messages: [
+            #     Message({'role': 'system', 'content': 'You are a helpful assistant.'}),
+            #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+            # ]
 
         # Not precise. It's hard to estimate tokens related with function calling and multimodal items.
         max_input_tokens = generate_cfg.pop('max_input_tokens', DEFAULT_MAX_INPUT_TOKENS)
+        # max_input_tokens: 28000
         if max_input_tokens > 0:
             messages = _truncate_input_messages_roughly(
                 messages=messages,
@@ -158,8 +184,11 @@ class BaseChatModel(ABC):
 
         if functions:
             fncall_mode = True
+            # fncall_mode: True
         else:
             fncall_mode = False
+
+        # 如果调用 .chat() 方法时没传入 functions, 或者 extra_generate_cfg 里 function_choice='none', 都会使得不启用 function call 模式
         if 'function_choice' in generate_cfg:
             fn_choice = generate_cfg['function_choice']
             valid_fn_choices = [f.get('name', f.get('name_for_model', None)) for f in (functions or [])]
@@ -172,15 +201,32 @@ class BaseChatModel(ABC):
 
         # Note: the preprocessor's behavior could change if it receives function_choice="none"
         messages = self._preprocess_messages(messages, lang=lang, generate_cfg=generate_cfg, functions=functions)
+        # messages: [
+        #     Message({'role': 'system', 'content': [
+        #         {'text': 'You are a helpful assistant.'},
+        #         {'text': '\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'}
+        #     ]}),
+        #     Message({'role': 'user', 'content': [{'text': "What's the weather like in San Francisco?"}]})
+        # ]
+
+        # self.support_multimodal_input: False
         if not self.support_multimodal_input:
             messages = [format_as_text_message(msg, add_upload_info=False) for msg in messages]
+        # messages: [
+        #     Message({'role': 'system', 'content':
+        #         'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'
+        #     }),
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
 
+        # fncall_mode: True
         if not fncall_mode:
             for k in ['parallel_function_calls', 'function_choice']:
                 if k in generate_cfg:
                     del generate_cfg[k]
 
         def _call_model_service():
+            # fncall_mode: True
             if fncall_mode:
                 return self._chat_with_functions(
                     messages=messages,
@@ -203,11 +249,15 @@ class BaseChatModel(ABC):
                         generate_cfg=generate_cfg,
                     )
 
+        # stream: True
+        # delta_stream: False
         if stream and delta_stream:
             # No retry for delta streaming
             output = _call_model_service()
         elif stream and (not delta_stream):
+            # this way
             output = retry_model_service_iterator(_call_model_service, max_retries=self.max_retries)
+            # output: <generator object retry_model_service_iterator at 0x7f8e385d8dd0>
         else:
             output = retry_model_service(_call_model_service, max_retries=self.max_retries)
 
@@ -222,6 +272,8 @@ class BaseChatModel(ABC):
             return self._convert_messages_to_target_type(output, _return_message_type)
         else:
             assert stream
+            # stream: True
+            # delta_stream: False
             if delta_stream:
                 # Hack: To avoid potential errors during the postprocessing of stop words when delta_stream=True.
                 # Man, we should never have implemented the support for `delta_stream=True` in the first place!
@@ -229,17 +281,20 @@ class BaseChatModel(ABC):
                 assert 'skip_stopword_postproc' not in generate_cfg
                 generate_cfg['skip_stopword_postproc'] = True
             output = self._postprocess_messages_iterator(output, fncall_mode=fncall_mode, generate_cfg=generate_cfg)
+            # output: <generator object BaseChatModel._postprocess_messages_iterator at 0x7f8e345020a0>
 
             def _format_and_cache() -> Iterator[List[Message]]:
                 o = []
                 for o in output:
                     if o:
+                        # self.support_multimodal_input: False
                         if not self.support_multimodal_output:
                             o = _format_as_text_messages(messages=o)
                         yield o
                 if o and (self.cache is not None):
                     self.cache.set(cache_key, json_dumps_compact(o))
 
+            # _return_message_type: 'dict'
             return self._convert_messages_iterator_to_target_type(_format_and_cache(), _return_message_type)
 
     def _chat(
@@ -249,6 +304,16 @@ class BaseChatModel(ABC):
         delta_stream: bool,
         generate_cfg: dict,
     ) -> Union[List[Message], Iterator[List[Message]]]:
+        # messages: [
+        #     Message({'role': 'system', 'content':
+        #         'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'
+        #     }),
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
+        # stream: True
+        # delta_stream: False
+        # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿'], 'seed': 736941439}
+
         if stream:
             return self._chat_stream(messages, delta_stream=delta_stream, generate_cfg=generate_cfg)
         else:

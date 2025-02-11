@@ -9,18 +9,29 @@ from qwen_agent.llm.schema import ASSISTANT, FUNCTION, USER, ContentItem, Messag
 class BaseFnCallModel(BaseChatModel, ABC):
 
     def __init__(self, cfg: Optional[Dict] = None):
+        # cfg: {'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'}
         super().__init__(cfg)
+        # self.generate_cfg: {}; 如果在 TextChatAtOAI 类定义时传入 generate_cfg, 那么 self.generate_cfg = generate_cfg; 否则 self.generate_cfg = {}
         fncall_prompt_type = self.generate_cfg.get('fncall_prompt_type', 'qwen')
+        # fncall_prompt_type: 'qwen'
         if fncall_prompt_type == 'qwen':
+            # 如果 function call 是 qwen 类型, 那么就为 self.generate_cfg 新增两个停止词
             from qwen_agent.llm.fncall_prompts.qwen_fncall_prompt import FN_STOP_WORDS, QwenFnCallPrompt
             self.fncall_prompt = QwenFnCallPrompt()
             stop = self.generate_cfg.get('stop', [])
+            # stop: []
             self.generate_cfg['stop'] = stop + [x for x in FN_STOP_WORDS if x not in stop]
+            # self.generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿']}
         elif fncall_prompt_type == 'nous':
+            # 如果 function call 是 nous 类型, 那么 self.generate_cfg 就没变化
             from qwen_agent.llm.fncall_prompts.nous_fncall_prompt import NousFnCallPrompt
             self.fncall_prompt = NousFnCallPrompt()
         else:
             raise NotImplementedError
+
+        # __init__ 总结:
+        # 围绕 generate_cfg 里指定的 fncall_prompt_type, 对 self.generate_cfg 进行适当修改
+        # 如果定义时没有传入 generate_cfg, 那么默认按 qwen 模式处理
 
     def _preprocess_messages(
         self,
@@ -106,6 +117,17 @@ class BaseFnCallModel(BaseChatModel, ABC):
         generate_cfg: dict,
         lang: Literal['en', 'zh'],
     ) -> Union[List[Message], Iterator[List[Message]]]:
+        # messages: [
+        #     Message({'role': 'system', 'content':
+        #         'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'
+        #     }),
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
+        # stream: True
+        # delta_stream: False
+        # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿'], 'seed': 736941439}
+        # lang: 'en'
+
         if delta_stream:
             raise NotImplementedError('Please use stream=True with delta_stream=False, because delta_stream=True'
                                       ' is not implemented for function calling due to some technical reasons.')
@@ -121,7 +143,17 @@ class BaseFnCallModel(BaseChatModel, ABC):
         generate_cfg: dict,
         stream: bool,
     ) -> Iterator[List[Message]]:
+        # messages: [
+        #     Message({'role': 'system', 'content':
+        #         'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'
+        #     }),
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
+        # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿'], 'seed': 736941439}
+        # stream: True
+
         messages = simulate_response_completion_with_chat(messages)
+        # messages: 同上
         return self._chat(messages, stream=stream, delta_stream=False, generate_cfg=generate_cfg)
 
 

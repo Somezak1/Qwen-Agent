@@ -21,6 +21,7 @@ from qwen_agent.log import logger
 class TextChatAtOAI(BaseFnCallModel):
 
     def __init__(self, cfg: Optional[Dict] = None):
+        # cfg: {'model': 'qwen2.5-14b-instruct', 'model_server': 'http://172.30.11.1:8020/v1', 'api_key': 'EMPTY'}
         super().__init__(cfg)
         self.model = self.model or 'gpt-4o-mini'
         cfg = cfg or {}
@@ -41,6 +42,7 @@ class TextChatAtOAI(BaseFnCallModel):
                 openai.api_key = api_key
             self._chat_complete_create = openai.ChatCompletion.create
         else:
+            # this way
             api_kwargs = {}
             if api_base:
                 api_kwargs['base_url'] = api_base
@@ -69,7 +71,26 @@ class TextChatAtOAI(BaseFnCallModel):
         delta_stream: bool,
         generate_cfg: dict,
     ) -> Iterator[List[Message]]:
+        # messages: [
+        #     Message({'role': 'system', 'content':
+        #         'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'
+        #     }),
+        #     Message({'role': 'user', 'content': "What's the weather like in San Francisco?"})
+        # ]
+        # delta_stream: False
+        # generate_cfg: {'stop': ['✿RESULT✿', '✿RETURN✿'], 'seed': 736941439}
+
         messages = self.convert_messages_to_dicts(messages)
+        # messages: [
+        #     {'role': 'system', 'content': 'You are a helpful assistant.\n\n# Tools\n\n## You have access to the following tools:\n\n### get_current_weather\n\nget_current_weather: Get the current weather in a given location Parameters: {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]} Format the arguments as a JSON object.\n\n## When you need to call a tool, please insert the following command in your reply, which can be called zero or multiple times according to your needs:\n\n✿FUNCTION✿: The tool to use, should be one of [get_current_weather]\n✿ARGS✿: The input of the tool\n✿RESULT✿: Tool results\n✿RETURN✿: Reply based on tool results. Images need to be rendered as ![](url)'},
+        #     {'role': 'user', 'content': "What's the weather like in San Francisco?"}
+        # ]
+
+        print("*" * 60 + " Model Input " + "*" * 60)
+        for i in messages:
+            print(i)
+        print("*" * 60 + " Model Input " + "*" * 60)
+
         try:
             response = self._chat_complete_create(model=self.model, messages=messages, stream=True, **generate_cfg)
             if delta_stream:
@@ -78,9 +99,10 @@ class TextChatAtOAI(BaseFnCallModel):
                         yield [Message(ASSISTANT, chunk.choices[0].delta.content)]
             else:
                 full_response = ''
-                for chunk in response:
+                for idx, chunk in enumerate(response, start=1):
                     if chunk.choices and hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
                         full_response += chunk.choices[0].delta.content
+                        print(f"\n模型第 {idx} 次生成内容: {repr(full_response)}")
                         yield [Message(ASSISTANT, full_response)]
         except OpenAIError as ex:
             raise ModelServiceError(exception=ex)
