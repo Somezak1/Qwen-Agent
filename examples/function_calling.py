@@ -2,7 +2,7 @@
 import json
 import os
 
-from qwen_agent.llm import get_chat_model2222
+from qwen_agent.llm import get_chat_model
 
 
 # Example dummy function hard coded to return the same weather
@@ -43,6 +43,9 @@ def test(fncall_prompt_type: str = 'qwen'):
         'model': 'qwen2.5-14b-instruct',
         'model_server': 'http://172.30.11.1:8020/v1',  # api_base
         'api_key': 'EMPTY',
+        'generate_cfg': {
+            'fncall_prompt_type': 'nous'
+        },
     })
     # llm: TextChatAtOAI Obj
 
@@ -66,6 +69,29 @@ def test(fncall_prompt_type: str = 'qwen'):
             'required': ['location'],
         },
     }]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                'name': 'get_current_weather',
+                'description': 'Get the current weather in a given location',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'location': {
+                            'type': 'string',
+                            'description': 'The city and state, e.g. San Francisco, CA',
+                        },
+                        'unit': {
+                            'type': 'string',
+                            'enum': ['celsius', 'fahrenheit']
+                        },
+                    },
+                    'required': ['location'],
+                },
+            },
+        },
+    ]
 
     print()
     print("*" * 60 + " Messages " + "*" * 60)
@@ -86,7 +112,8 @@ def test(fncall_prompt_type: str = 'qwen'):
 
     for responses in llm.chat(
             messages=messages,
-            functions=functions,
+            functions=tools,
+            # functions=functions,
             stream=True,
             # Note: extra_generate_cfg is optional
             # extra_generate_cfg=dict(
@@ -145,6 +172,9 @@ def test(fncall_prompt_type: str = 'qwen'):
         ):  # get a new response from the model where it can see the function response
             print("llm.chat 返回内容: ", responses)
 
+        # ==================================================================================================================================
+        # 使用 Qwen2 的模板进行 function call ↓
+        #
         # 第一次调用 llm.chat(messages, functions, True) 所传入的 messages:
         # ************************************************************ Messages ************************************************************
         # {'role': 'user', 'content': "What's the weather like in San Francisco?"}
@@ -293,6 +323,176 @@ def test(fncall_prompt_type: str = 'qwen'):
         #
         # 模型第 14 次生成内容: 'The current temperature in San Francisco is 72°F.'
         # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current temperature in San Francisco is 72°F.'}]
+        #
+        # 使用 Qwen2 的模板进行 function call ↑
+        # ==================================================================================================================================
+
+
+
+        # ==================================================================================================================================
+        # 使用 Qwen2.5 的模板进行 function call ↓
+        #
+        # 第一次调用 llm.chat(messages, tools, True) 所传入的 messages:
+        # ************************************************************ Messages ************************************************************
+        # {'role': 'user', 'content': "What's the weather like in San Francisco?"}
+        # ************************************************************ Messages ************************************************************
+        #
+        # OpenAI API 接口收到的 messages:
+        # ************************************************************ Model Input ************************************************************
+        # {'role': 'system', 'content': 'You are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{"type": "function", "function": {"type": "function", "function": {"name": "get_current_weather", "description": "Get the current weather in a given location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]}}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>'}
+        # {'role': 'user', 'content': "What's the weather like in San Francisco?"}
+        # ************************************************************ Model Input ************************************************************
+        #
+        # 模型实际接收到的 prompt:
+        # '<|im_start|>system\nYou are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{"type": "function", "function": {"type": "function", "function": {"name": "get_current_weather", "description": "Get the current weather in a given location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]}}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat\'s the weather like in San Francisco?<|im_end|>\n<|im_start|>assistant\n'
+        #
+        # 模型第 2 次生成内容: '<tool_call>'
+        #
+        # 模型第 3 次生成内容: '<tool_call>\n'
+        #
+        # 模型第 4 次生成内容: '<tool_call>\n{"'
+        #
+        # 模型第 5 次生成内容: '<tool_call>\n{"name'
+        #
+        # 模型第 6 次生成内容: '<tool_call>\n{"name":'
+        #
+        # 模型第 7 次生成内容: '<tool_call>\n{"name": "'
+        #
+        # 模型第 8 次生成内容: '<tool_call>\n{"name": "get'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get', 'arguments': ''}}]
+        #
+        # 模型第 9 次生成内容: '<tool_call>\n{"name": "get_current'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current', 'arguments': ''}}]
+        #
+        # 模型第 10 次生成内容: '<tool_call>\n{"name": "get_current_weather'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': ''}}]
+        #
+        # 模型第 11 次生成内容: '<tool_call>\n{"name": "get_current_weather",'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather",', 'arguments': ''}}]
+        #
+        # 模型第 12 次生成内容: '<tool_call>\n{"name": "get_current_weather", "'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': ''}}]
+        #
+        # 模型第 13 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': ''}}]
+        #
+        # 模型第 14 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments":'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': ''}}]
+        #
+        # 模型第 15 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"'}}]
+        #
+        # 模型第 16 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location'}}]
+        #
+        # 模型第 17 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location":'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location":'}}]
+        #
+        # 模型第 18 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "'}}]
+        #
+        # 模型第 19 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San'}}]
+        #
+        # 模型第 20 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco'}}]
+        #
+        # 模型第 21 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco,'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco,'}}]
+        #
+        # 模型第 22 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA'}}]
+        #
+        # 模型第 23 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA",'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA",'}}]
+        #
+        # 模型第 24 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "'}}]
+        #
+        # 模型第 25 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit'}}]
+        #
+        # 模型第 26 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit":'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit":'}}]
+        #
+        # 模型第 27 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "'}}]
+        #
+        # 模型第 28 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "f'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "f'}}]
+        #
+        # 模型第 29 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "fahrenheit'}}]
+        #
+        # 模型第 30 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"}}\n'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "fahrenheit"}}\n'}}]
+        #
+        # 模型第 31 次生成内容: '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"}}\n</tool_call>'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "fahrenheit"}'}}]
+        #
+        # # Function Response:
+        # {"location": "San Francisco", "temperature": "72", "unit": "fahrenheit"}
+        #
+        # 第二次调用 llm.chat(messages, tools, True) 所传入的 messages:
+        # ************************************************************ Messages ************************************************************
+        # {'role': 'user', 'content': "What's the weather like in San Francisco?"}
+        # {'role': 'assistant', 'content': '', 'function_call': {'name': 'get_current_weather', 'arguments': '{"location": "San Francisco, CA", "unit": "fahrenheit"}'}}
+        # {'role': 'function', 'name': 'get_current_weather', 'content': '{"location": "San Francisco", "temperature": "72", "unit": "fahrenheit"}'}
+        # ************************************************************ Messages ************************************************************
+        #
+        # OpenAI API 接口收到的 messages:
+        # ************************************************************ Model Input ************************************************************
+        # {'role': 'system', 'content': 'You are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{"type": "function", "function": {"name": "get_current_weather", "description": "Get the current weather in a given location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>'}
+        # {'role': 'user', 'content': "What's the weather like in San Francisco?"}
+        # {'role': 'assistant', 'content': '<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"}}\n</tool_call>'}
+        # {'role': 'user', 'content': '<tool_response>\n{"location": "San Francisco", "temperature": "72", "unit": "fahrenheit"}\n</tool_response>'}
+        # ************************************************************ Model Input ************************************************************
+        #
+        # 模型实际接收到的 prompt:
+        # '<|im_start|>system\nYou are a helpful assistant.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{"type": "function", "function": {"name": "get_current_weather", "description": "Get the current weather in a given location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}}, "required": ["location"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWhat\'s the weather like in San Francisco?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{"name": "get_current_weather", "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{"location": "San Francisco", "temperature": "72", "unit": "fahrenheit"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n'
+        #
+        # 模型第 2 次生成内容: 'The'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The'}]
+        #
+        # 模型第 3 次生成内容: 'The current'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current'}]
+        #
+        # 模型第 4 次生成内容: 'The current weather'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather'}]
+        #
+        # 模型第 5 次生成内容: 'The current weather in'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in'}]
+        #
+        # 模型第 6 次生成内容: 'The current weather in San'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San'}]
+        #
+        # 模型第 7 次生成内容: 'The current weather in San Francisco'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco'}]
+        #
+        # 模型第 8 次生成内容: 'The current weather in San Francisco is'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is'}]
+        #
+        # 模型第 9 次生成内容: 'The current weather in San Francisco is '
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is '}]
+        #
+        # 模型第 10 次生成内容: 'The current weather in San Francisco is 7'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is 7'}]
+        #
+        # 模型第 11 次生成内容: 'The current weather in San Francisco is 72'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is 72'}]
+        #
+        # 模型第 12 次生成内容: 'The current weather in San Francisco is 72 degrees'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is 72 degrees'}]
+        #
+        # 模型第 13 次生成内容: 'The current weather in San Francisco is 72 degrees Fahrenheit'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is 72 degrees Fahrenheit'}]
+        #
+        # 模型第 14 次生成内容: 'The current weather in San Francisco is 72 degrees Fahrenheit.'
+        # llm.chat 返回内容:  [{'role': 'assistant', 'content': 'The current weather in San Francisco is 72 degrees Fahrenheit.'}]
+        #
+        # 使用 Qwen2.5 的模板进行 function call ↑
+        # ==================================================================================================================================
+
 
 
 if __name__ == '__main__':
